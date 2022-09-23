@@ -1,0 +1,8 @@
+ssh $USER@nw-syd-vxdb.cse.unsw.edu.au
+
+...
+
+source /localstorage/$USER/env
+cd 3311/ass2/Assignment2Directory/
+p1
+psql mymyunsw

@@ -1,0 +1,165 @@
+#!/usr/bin/python3
+# COMP3311 21T3 Ass2 ... progression check for a given student
+
+import sys
+import psycopg2
+import re
+from helpers import *
+
+# define any local helper functions here
+
+### set up some globals
+
+usage = f"Usage: {sys.argv[0]} zID [Program Stream]"
+db = None
+
+### process command-line args
+
+argc = len(sys.argv)
+if argc < 2:
+  print(usage)
+  exit(1)
+zid = sys.argv[1]
+if zid[0] == 'z':
+  zid = zid[1:8]
+digits = re.compile("^\d{7}$")
+if not digits.match(zid):
+  print("Invalid student ID")
+  exit(1)
+
+progCode = None
+strmCode = None
+
+if argc == 4:
+  progCode = sys.argv[2]
+  strmCode = sys.argv[3]
+
+# manipulate database
+
+try:
+  progInfo = None
+  strmInfo = None
+  db = psycopg2.connect("dbname=mymyunsw")
+  cur = db.cursor()
+  stuInfo = getStudent(db,zid)
+  #print(stuInfo) # debug
+  if not stuInfo:
+    print(f"Invalid student id {zid}")
+    exit()
+
+  if progCode:
+    progInfo = getProgram(db,progCode)
+    if not progInfo:
+      print(f"Invalid program code {progCode}")
+      exit()
+    # print(progInfo)  #debug
+  else:
+    progInfo = getDefultProgram(db,zid)
+    progCode = progInfo[1]
+    if not progInfo:
+      print(f"Student {zid} not enrolled in any programs")
+      exit()
+    # print(progInfo)  #debug
+
+  if strmCode:
+    strmInfo = getStream(db,strmCode)
+    if not strmInfo:
+      print(f"Invalid program code {strmCode}")
+      exit()
+    # print(strmInfo)  #debug
+  else:
+    strmInfo = getDefultStream(db,zid)
+    strmCode = strmInfo[1]
+    if not strmInfo:
+      print(f"Student {zid} not enrolled in any streams")
+      exit()
+    # print(strmInfo)  #debug
+
+  # if have a program/stream
+  #   show progression check on supplied program/stream
+  # else
+  #   show progression check on most recent program/stream enrolment
+  # ... add your code here ...
+  query = """
+  select * 
+  from studentName
+  where id = %s
+  """
+  cur.execute(query, [zid])
+  tuple = cur.fetchone()
+  zid, family, given = tuple
+  print(zid, family + ', ' + given)
+  print(' ', progInfo[1], progInfo[2])
+  print(' ', strmInfo[1], strmInfo[2] + '\n')
+  print('Completed:')
+
+  # Get program rules and stream rules
+  progRule = createRules(db, progCode)
+  strmRule = createRules(db, strmCode)  
+  # print(progRule)
+  # print(strmRule)
+  query = """
+  select *
+  from subjectGrades
+  where studentId = %s
+  """
+  cur.execute(query, [zid])
+  totalAchievedUOC = 0
+  for tuple in cur.fetchall():
+    zid, courseCode, term, courseTitle, mark, grade, UOC = tuple
+    towards = ''
+
+    if mark == 100:
+      courseTitle = courseTitle.ljust(31)
+    else:
+      courseTitle = courseTitle.ljust(32)
+
+    noUOC = ['AF', 'FL', 'UF', 'AS', 'AS', 'AW', 'PW', 'RD', 'NF', 'LE', 'PE', 'WD', 'WJ']
+    noWAM = ['A', 'B', 'C', 'D', 'XE', 'T', 'SY', 'EC', 'NC', 'AS', 'AW', 'PW', 'RD', 'NF', 'LE', 'PE', 'WD', 'WJ']
+    if grade in noUOC and grade not in noWAM:
+      UOC = 'fail'
+      towards = 'does not count'
+    if grade in noUOC and grade in noWAM:
+      UOC = ''
+    if grade not in noUOC:
+      progCType, progAName = completeCourse(courseCode, progRule)
+      strmCType, strmAName = completeCourse(courseCode, strmRule)
+      if progCType != 'FE':
+        totalAchievedUOC, UOC, towards = matchAOGroup(progCType, progAName, progRule, strmRule, totalAchievedUOC, UOC, towards)
+      else:
+        totalAchievedUOC, UOC, towards = matchAOGroup(strmCType, strmAName, progRule, strmRule, totalAchievedUOC, UOC, towards)
+      # print('\n')
+      # print(progRule)
+      # print(strmRule)
+      
+      if towards != 'does not satisfy any rule' and towards != 'does not count':
+        towards = 'towards ' + towards
+    if mark is None:
+      mark = ' -'
+    else:
+      mark = str(mark)
+
+    print(courseCode, term, courseTitle, mark, grade.ljust(4), UOC, towards)
+  print('UOC =', totalAchievedUOC, 'so far\n')
+  
+  query = """
+  select uoc
+  from programs
+  where id = %s
+  """
+  cur = db.cursor()
+  cur.execute(query, [progCode])
+  expectedUOC = cur.fetchone()[0]
+
+  if int(expectedUOC) == totalAchievedUOC:
+    print('Eligible to graduate')
+  else:
+    print('Remaining to complete degree:')
+    printToComplete(db, strmRule, progRule)
+
+except Exception as err:
+  print("DB error: ", err)
+finally:
+  if db:
+    db.close()
+

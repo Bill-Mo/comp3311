@@ -1,0 +1,97 @@
+#!/usr/bin/python3
+# COMP3311 21T3 Ass2 ... print list of rules for a program or stream
+
+import sys
+import psycopg2
+import re
+from helpers import getProgram, getStream, programRequirement, streamRequirement
+
+# define any local helper functions here
+# ...
+
+### set up some globals
+
+usage = f"Usage: {sys.argv[0]} (ProgramCode|StreamCode)"
+db = None
+
+### process command-line args
+
+argc = len(sys.argv)
+if argc < 2:
+  print(usage)
+  exit(1)
+code = sys.argv[1]
+if len(code) == 4:
+  codeOf = "program"
+elif len(code) == 6:
+  codeOf = "stream"
+
+try:
+  db = psycopg2.connect("dbname=mymyunsw")
+  if codeOf == "program":
+    progInfo = getProgram(db,code)
+    if not progInfo:
+      print(f"Invalid program code {code}")
+      exit()
+    #print(progInfo)  #debug
+    # List the rules for Program
+
+    # ... add your code here ...
+    query = """
+    select name, uoc, duration
+    from programs
+    where id = %s
+    """
+    cur = db.cursor()
+    cur.execute(query, [code])
+    tuple = cur.fetchone()
+    name, uoc, duration = tuple
+    print(code, name + ',', uoc, 'UOC,', duration/12, 'years')
+      
+    query = """
+    select longname
+    from programs p, orgunits o
+    where p.offeredby = o.id
+    and p.code = %s
+    """
+    cur.execute(query, [code])
+    longName = cur.fetchone()[0]
+    print('- offered by', longName)
+    print('Academic Requirements:')
+    programRequirement(db, code)
+
+  elif codeOf == "stream":
+    strmInfo = getStream(db,code)
+    if not strmInfo:
+      print(f"Invalid stream code {code}")
+      exit()
+    #print(strmInfo)  #debug
+    # List the rules for Stream
+    # ... add your code here ...
+    query = """
+    select name
+    from streams
+    where code = %s
+    """
+    cur = db.cursor()
+    cur.execute(query, [code])
+    name = cur.fetchone()[0]
+    print(code, name)
+      
+    query = """
+    select longname
+    from streams s, orgunits o
+    where s.offeredby = o.id
+    and s.code = %s
+    """
+    cur.execute(query, [code])
+    longName = cur.fetchone()[0]
+    print('- offered by', longName)
+    print('Academic Requirements:')
+    streamRequirement(db, code)
+
+except Exception as err:
+  print(err)
+finally:
+  if db:
+    db.close()

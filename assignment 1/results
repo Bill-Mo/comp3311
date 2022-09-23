@@ -1,0 +1,28 @@
+ test | result  
+------+---------
+ q1   | correct
+ q2   | correct
+ q3   | correct
+ q4   | correct
+ q5   | correct
+ q6   | correct
+ q7   | correct
+ q8   | correct
+ q9   | correct
+ q10a | correct
+ q10b | correct
+ q10c | correct
+ q10d | correct
+ q10e | correct
+ q11a | correct
+ q11b | correct
+ q11c | correct
+ q11d | correct
+ q11e | correct
+ q12a | correct
+ q12b | correct
+ q12c | correct
+ q12d | correct
+ q12e | correct
+(24 rows)
+

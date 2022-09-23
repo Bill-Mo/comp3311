@@ -1,0 +1,92 @@
+#!/usr/bin/python3
+# COMP3311 21T3 Ass2 ... print a transcript for a given student
+
+import sys
+import psycopg2
+import re
+from helpers import getStudent
+
+# define any local helper functions here
+
+### set up some globals
+
+usage = f"Usage: {sys.argv[0]} zID"
+db = None
+
+### process command-line args
+
+argc = len(sys.argv)
+if argc < 2:
+  print(usage)
+  exit(1)
+zid = sys.argv[1]
+if zid[0] == 'z':
+  zid = zid[1:8]
+digits = re.compile("^\d{7}$")
+if not digits.match(zid):
+  print(f"Invalid student ID {zid}")
+  exit(1)
+
+# manipulate database
+
+try:
+  db = psycopg2.connect("dbname=mymyunsw")
+  stuInfo = getStudent(db,zid)
+  if not stuInfo:
+    print(f"Invalid student ID {zid}")
+    exit()
+
+  #print(stuInfo) # debug
+  # Print transcript for Student
+  # ... add your code here ...
+  query = """
+  select * 
+  from studentName
+  where id = %s
+  """
+  cur = db.cursor()
+  cur.execute(query, [zid])
+  tuple = cur.fetchone()
+  zid, family, given = tuple
+  print(zid, family + ', ' + given)
+
+  query = """
+  select *
+  from subjectGrades
+  where studentId = %s
+  """
+  cur.execute(query, [zid])
+  totalAchievedUOC = 0
+  weightedMarkSum = 0
+  totalAttemptedUOC = 0
+  for tuple in cur.fetchall():
+    zid, courseCode, term, courseTitle, mark, grade, UOC = tuple
+
+    noUOC = ['AF', 'FL', 'UF', 'AS', 'AS', 'AW', 'PW', 'RD', 'NF', 'LE', 'PE', 'WD', 'WJ']
+    noWAM = ['A', 'B', 'C', 'D', 'XE', 'T', 'SY', 'EC', 'NC', 'AS', 'AW', 'PW', 'RD', 'NF', 'LE', 'PE', 'WD', 'WJ']
+    if grade not in noWAM:
+      totalAttemptedUOC += UOC
+      if mark != None:
+        weightedMarkSum += mark * UOC
+
+    if grade in noUOC and grade not in noWAM:
+      UOC = ' fail'
+    if grade in noUOC and grade in noWAM:
+      UOC = ''
+    if grade not in noUOC:
+      totalAchievedUOC += UOC
+
+    if mark is None:
+      mark = ' -'
+
+    if UOC != ' fail':
+      UOC = f'{UOC:2d}uoc'
+    print(f"{courseCode} {term} {courseTitle:<32s}{mark:>3} {grade:>2s}  {UOC}")
+  print('UOC = ' + str(totalAchievedUOC) + ', WAM = ' + str(round(weightedMarkSum/totalAttemptedUOC, 1)))
+
+except Exception as err:
+  print("DB error: ", err)
+finally:
+  if db:
+    db.close()
+
